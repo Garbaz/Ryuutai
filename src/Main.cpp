@@ -344,7 +344,7 @@ int main() {
         }
 
         //Pass fov & aspect to raytrace shader
-        prog_raytrace.set_uniform("field_of_view_tan", glm::tan(glm::radians(FIELD_OF_VIEW_HORIZONTAL / 2)));
+        prog_raytrace.set_uniform("field_of_view_tan", glm::tan(glm::radians(0.5*fovy)));
         prog_raytrace.set_uniform("screen_ratio", aspect);
     }
 

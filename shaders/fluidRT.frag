@@ -3,8 +3,8 @@
 uniform float screen_ratio;
 uniform float field_of_view_tan;
 
-const float VIEW_DEPTH = 1;
-const float DENSITY_SCALE = 0.1;
+const float VIEW_DEPTH = 10;
+const float DENSITY_SCALE = 100.0;
 const vec3 WATER_COLOR = vec3(0,0.3,1.0);
 
 uniform float step_size;
@@ -49,7 +49,7 @@ uint sf_curve(ivec3 klm) {
                 mod(klm.z, ssubdiv_grid_size.z) * ssubdiv_grid_size.x * ssubdiv_grid_size.y);
 }
 ivec3 sf_cell(vec3 p) {
-    return ivec3((p - simulation_domain_origin) / (2 * kernel_h));
+    return ivec3((p - simulation_domain_origin) / (2.0 * kernel_h));
 }
 uint sf_index(vec3 p) {
     ivec3 klm = sf_cell(p);
@@ -59,9 +59,9 @@ uint sf_index(vec3 p) {
 float kernel(vec3 xi, vec3 xj) {
     vec3 d = (xi - xj) / kernel_h;
     float q = length(d);
-    float t1 = max(1 - q, 0.0f);
-    float t2 = max(2 - q, 0.0f);
-    return kernel_alpha * (t2 * t2 * t2 - 4 * t1 * t1 * t1);
+    float t1 = max(1.0 - q, 0.0f);
+    float t2 = max(2.0 - q, 0.0f);
+    return kernel_alpha * (t2 * t2 * t2 - 4.0 * t1 * t1 * t1);
 }
 
 float density(vec3 pos) {
@@ -73,9 +73,11 @@ float density(vec3 pos) {
             for (int dz = -1; dz <= 1; dz++) {
                 uint index = sf_curve(ivec3(cell.x - dx, cell.y - dy, cell.z - dz));
                 uint c = ssubdiv_C[index];
-                uint end = ssubdiv_L[index + 1];
-                for (; c < end; c++) {
-                    s += particles[ssubdiv_L[c]].mass * kernel(pos, particles[ssubdiv_L[c]].pos);
+                uint end = ssubdiv_C[index + 1];
+                while(c < end) {
+                    uint pi = ssubdiv_L[c];
+                    s += particles[pi].mass * kernel(pos, particles[pi].pos);
+                    c++;
                 }
             }
         }
@@ -84,22 +86,24 @@ float density(vec3 pos) {
 }
 
 void main() {
-    vec2 camera_offset = 2. * field_of_view_tan * vec2(pixel_position.x, screen_ratio * pixel_position.y);
-    vec3 offset_dir_horizontal = normalize(vec3(camera_direction.z, 0, -camera_direction.x));
+    vec2 camera_offset = 2.0 * field_of_view_tan * vec2(pixel_position.x, screen_ratio * -pixel_position.y);
+    vec3 offset_dir_horizontal = normalize(vec3(-camera_direction.z, 0.0, camera_direction.x));
     vec3 offset_dir_vertical = cross(camera_direction, offset_dir_horizontal);
     vec3 ray_direction = normalize(camera_direction + camera_offset.x * offset_dir_horizontal + camera_offset.y * offset_dir_vertical);
 
-    float t = 0;
-    float dens = 0;
-    while(t < VIEW_DEPTH) {
-        vec3 p = camera_position + t * ray_direction;
-        dens += DENSITY_SCALE * density(p);
-        if(dens > 1) {
-            dens = 1;
-            break;
-        }
-        t+=step_size;
-    }
+    float t = 0.0;
+    float dens = 0.0;
+    // while(t < VIEW_DEPTH) {
+    //     vec3 p = camera_position + t * ray_direction;
+    //     dens += DENSITY_SCALE * density(p);
+    //     if(dens > 1.0) {
+    //         dens = 1.0;
+    //         break;
+    //     }
+    //     t+=step_size;
+    // }
+
+    dens = 1000.0*density(camera_position + 5.0 * ray_direction);
 
     out_color = vec4(dens * WATER_COLOR, 1.0);
 }

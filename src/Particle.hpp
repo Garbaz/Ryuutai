@@ -1,23 +1,24 @@
 #pragma once
 
+#include <GLFW/glfw3.h>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/ext.hpp>
 
 struct Particle {
     // Initialized data
     glm::vec3 pos;
-    glm::vec3 vel;
-    glm::vec3 acc;
-    float mass;
-    unsigned int advect; // USED AS BOOLEAN, using u-int for glsl compat
+    glm::vec3 vel = glm::vec3(0);
+    glm::vec3 acc = glm::vec3(0);
+    GLfloat mass;
+    GLboolean advect;
     // Simulation data
-    float density;
-    float pressure;
+    GLfloat density;
+    GLfloat pressure;
+    // Render data
+    glm::vec3 color = glm::vec3(0.2, 0.2, 0.5);
 
     Particle(glm::vec3 pos_, float mass_, float advect_) {
         pos = pos_;
-        vel = glm::vec3(0);
-        acc = glm::vec3(0);
         mass = mass_;
         advect = advect_;
     }

@@ -44,38 +44,36 @@ void pretty_print(glm::mat3 m);
 
 #define modulus(n, M) ((((n) % (M)) + (M)) % (M))
 
-#define TIMEIT_TIMEIT false
+#define TIMEIT_TIMEIT true
 
-#if TIMEIT_TIMEIT
+#define TIMEIT_DURATION_TYPE std::chrono::microseconds
+
 #define TIMEIT_BEGIN                                               \
+    auto TIMEIT_begin = std::chrono::high_resolution_clock::now(); \
+    auto TIMEIT_start = std::chrono::high_resolution_clock::now(); \
+    auto TIMEIT_end = std::chrono::high_resolution_clock::now();   \
     struct TIMEIT_sample {                                         \
         std::string label;                                         \
         long t;                                                    \
     };                                                             \
-    std::vector<TIMEIT_sample> TIMEIT_times;                       \
-    auto TIMEIT_begin = std::chrono::high_resolution_clock::now(); \
-    auto TIMEIT_start = std::chrono::high_resolution_clock::now(); \
-    auto TIMEIT_end = std::chrono::high_resolution_clock::now();
+    std::vector<TIMEIT_sample> TIMEIT_times;
 
-#define TIMEIT_SAMPLE_START \
-    TIMEIT_start = std::chrono::high_resolution_clock::now();
-
-#define TIMEIT_SAMPLE_STOP(label)                           \
-    TIMEIT_end = std::chrono::high_resolution_clock::now(); \
-    TIMEIT_times.push_back(TIMEIT_sample{label, std::chrono::duration_cast<std::chrono::microseconds>(TIMEIT_end - TIMEIT_start).count()});
-
-#define TIMEIT_END                                                                                                                            \
-    {                                                                                                                                         \
-        long total = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - TIMEIT_begin).count(); \
-        for (const TIMEIT_sample& t : TIMEIT_times) {                                                                                         \
-            double ratio = double(t.t) / total;                                                                                               \
-            std::cout << t.label << ": " << t.t << "µS"                                                                                      \
-                      << " (" << int(ratio * 100.0) << "%)" << std::endl;                                                                     \
-        }                                                                                                                                     \
+#define TIMEIT_SAMPLE_START                                       \
+    if (TIMEIT_TIMEIT) {                                          \
+        TIMEIT_start = std::chrono::high_resolution_clock::now(); \
     }
-#else
-#define TIMEIT_BEGIN
-#define TIMEIT_SAMPLE_START
-#define TIMEIT_SAMPLE_STOP(label)
-#define TIMEIT_END
-#endif
+
+#define TIMEIT_SAMPLE_STOP(label)                                                                                                          \
+    if (TIMEIT_TIMEIT) {                                                                                                                   \
+        TIMEIT_end = std::chrono::high_resolution_clock::now();                                                                            \
+        TIMEIT_times.push_back(TIMEIT_sample{label, std::chrono::duration_cast<TIMEIT_DURATION_TYPE>(TIMEIT_end - TIMEIT_start).count()}); \
+    }
+
+#define TIMEIT_END                                                                                                                       \
+    if (TIMEIT_TIMEIT) {                                                                                                                 \
+        long total = std::chrono::duration_cast<TIMEIT_DURATION_TYPE>(std::chrono::high_resolution_clock::now() - TIMEIT_begin).count(); \
+        for (const TIMEIT_sample& t : TIMEIT_times) {                                                                                    \
+            double ratio = double(t.t) / total;                                                                                          \
+            std::cout << t.label << ": " << t.t << " (" << int(ratio * 100.0) << "%)" << std::endl;                                      \
+        }                                                                                                                                \
+    }

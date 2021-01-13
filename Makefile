@@ -3,7 +3,7 @@ progname = Ryuutai
 builddir = build
 srcdir = src
 
-libs = -Llib -lGL -lGLEW -lglfw
+libs = -Llib -lGL -lGLEW -lglfw -lpthread
 
 #imguidir = ${srcdir}/external/imgui
 

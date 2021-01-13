@@ -10,6 +10,8 @@
 #include <vector>
 #include <limits>
 #include <chrono>
+#include <thread>
+#include <mutex>
 
 #include "GLUtils.hpp"
 #include "ShaderProgram.hpp"
@@ -19,12 +21,12 @@
 #include "SPH.hpp"
 #include "SpaceSubdivision.hpp"
 
-const float FLUID_PARTICLE_SPACING = 0.5;
-const float FLUID_PARTICLE_MASS = 0.1;
-const float FLUID_REST_DENSITY = FLUID_PARTICLE_MASS / (FLUID_PARTICLE_SPACING * FLUID_PARTICLE_SPACING * FLUID_PARTICLE_SPACING);
+const float FLUID_PARTICLE_SPACING = 0.4;
+const float FLUID_REST_DENSITY = 1.0;
+const float FLUID_PARTICLE_MASS = FLUID_REST_DENSITY * (FLUID_PARTICLE_SPACING * FLUID_PARTICLE_SPACING * FLUID_PARTICLE_SPACING);
 
 const float FLUID_KINEMATIC_VISCOSITY_NU = 1.0 /*1.0e-6*/;
-const float FLUID_STIFFNESS = 50.0;
+const float FLUID_STIFFNESS = 1000.0;
 
 SPH sph;
 
@@ -34,12 +36,12 @@ float SSUBDIV_CELL_SIZE;
 glm::uvec3 SSUBDIV_GRID_SIZE;
 unsigned int SSUBDIV_TOTAL_CELLS;
 
-// const unsigned int ALIGN_PART_DATA_EVERY = 1;
-// int align_part_data_counter = 0;
+const unsigned int ALIGN_PART_DATA_EVERY = 100;
+int align_part_data_counter = 0;
 
 const glm::vec3 GRAVITY = glm::vec3(0, -9.81, 0);
 
-const float PHYSICS_TIME_SCALE = 0.5;
+const float PHYSICS_TIME_SCALE = 0.1;
 
 GLFWwindow *window;
 glm::ivec2 viewport_size;
@@ -75,6 +77,7 @@ void add_debug_line_(glm::vec3 b, glm::vec3 d, glm::vec3 col, float len) {
 }
 
 std::vector<Particle> particles;
+std::mutex mutex_sim_data;
 
 std::vector<unsigned int> ssubdiv_C;
 std::vector<unsigned int> ssubdiv_L;
@@ -95,15 +98,21 @@ unsigned int sf_index(glm::vec3 p) {
 void physics_step(float dt) {
     dt *= PHYSICS_TIME_SCALE;
 
+#undef TIMEIT_TIMEIT  // To keep the compiler from bitching about redefinition
+#define TIMEIT_TIMEIT false
+
     TIMEIT_BEGIN;
 
-    // TIMEIT_SAMPLE_START
-    // if (align_part_data_counter <= 0) {
-    //     align_part_data_counter = ALIGN_PART_DATA_EVERY;
-    //     sort_to_index_array(particles, ssubdiv_L);
-    // }
-    // align_part_data_counter--;
-    // TIMEIT_SAMPLE_STOP("space subdiv - align part data")
+    TIMEIT_SAMPLE_START
+    if (align_part_data_counter <= 0) {
+        align_part_data_counter = ALIGN_PART_DATA_EVERY;
+        sort_to_index_array(particles, ssubdiv_L);
+        // for (unsigned int i = 0; i < particles.size(); i++) {
+        //     particles[i].color = glm::vec3(float(i) / particles.size(), 0, 0);
+        // }
+    }
+    align_part_data_counter--;
+    TIMEIT_SAMPLE_STOP("space subdiv - align part data")
 
     TIMEIT_SAMPLE_START
     std::fill(ssubdiv_C.begin(), ssubdiv_C.end(), 0);
@@ -143,7 +152,7 @@ void physics_step(float dt) {
             // DBG(glm::to_string(a_nonp));
             // DBG(glm::to_string(a_p));
             p.acc = a_nonp + a_p;
-            add_debug_line_(p.pos, p.acc, glm::vec3(1, 0, 0), 0.25);
+            // add_debug_line_(p.pos, p.acc, glm::vec3(1, 0, 0), 0.25);
         }
     }
     TIMEIT_SAMPLE_STOP("simulation - accelerations")
@@ -157,10 +166,23 @@ void physics_step(float dt) {
             }
         }
     }
+    simulation_step = false;
     TIMEIT_SAMPLE_STOP("advect step")
 
     TIMEIT_END
 }
+
+// void simulation_loop() {
+//     auto lasttime = std::chrono::high_resolution_clock::now();
+//     while (true) {
+//         auto currtime = std::chrono::high_resolution_clock::now();
+//         double dt = std::chrono::duration_cast<std::chrono::duration<double>>(currtime - lasttime).count();
+//         lasttime = currtime;
+//         mutex_sim_data.lock();
+//         physics_step(dt);
+//         mutex_sim_data.unlock();
+//     }
+// }
 
 std::vector<glm::uvec2> edges;
 
@@ -170,43 +192,44 @@ bool draw_vertecies = true, draw_edges = true, draw_faces = true;
 
 std::vector<ShaderProgram *> shaders;
 
+// std::thread thread_simulation;
+
 int main() {
     //PARTICLE SETUP
 
-    for (float x = -3; x <= 3; x += FLUID_PARTICLE_SPACING) {
-        for (float y = -1; y <= 8; y += FLUID_PARTICLE_SPACING) {
-            for (float z = -3; z <= 3; z += FLUID_PARTICLE_SPACING) {
-                particles.push_back(Particle(glm::vec3(x, 3 + y, z), FLUID_PARTICLE_MASS, true));
+    for (float x = -3; x <= 2; x += FLUID_PARTICLE_SPACING) {
+        for (float y = -1; y <= 7; y += FLUID_PARTICLE_SPACING) {
+            for (float z = -1.5; z <= 1.5; z += FLUID_PARTICLE_SPACING) {
+                particles.push_back(Particle(glm::vec3(x, 2 + y, z), FLUID_PARTICLE_MASS, true));
             }
         }
     }
     // particles.push_back(Particle(glm::vec3(0, 1, 0), 1.0, true));
     // particles.push_back(Particle(glm::vec3(0, 0, 0), 1.0, true));
     {
-        const float SIZE = 5;
-        const int PPS = 16;
-        const float SPACING = SIZE / PPS;
+        const glm::vec2 SIZE = glm::vec2(10, 5);
+        const float SPACING = 0.75 * FLUID_PARTICLE_SPACING;
         const int LAYERS = 2;
         const float MASS = 10.0;
-        const int HEIGHT = 6;
-        for (int i = 0; i <= PPS; i++) {
-            for (int j = 0; j <= PPS; j++) {
-                float x = SIZE * (2 * float(i) / PPS - 1);
-                float z = SIZE * (2 * float(j) / PPS - 1);
+        const float HEIGHT = 2;
+        for (int i = 0; i*SPACING <= SIZE.x; i++) {
+            for (int j = 0; j*SPACING <= SIZE.y; j++) {
+                float x = float(i) * SPACING - 0.5*SIZE.x;
+                float z = float(j) * SPACING - 0.5*SIZE.y;
                 for (int l = 0; l < LAYERS; l++) {
                     particles.push_back(Particle(glm::vec3(x, -l * SPACING, z), MASS, false));
                 }
-                if (i == 0 || i == PPS) {
+                if (i == 0 || (i+1)*SPACING > SIZE.x) {
                     float ls = (i == 0 ? -1 : 1);
                     for (int l = 0; l < LAYERS; l++) {
-                        for (int h = 1; h <= HEIGHT; h++) {
-                            particles.push_back(Particle(glm::vec3(x + ls * SPACING * l, h * SPACING, z), MASS, false));
+                        for (int h = 1; h * SPACING <= HEIGHT; h++) {
+                            particles.push_back(Particle(glm::vec3(x, h * SPACING, z + ls * SPACING * l), MASS, false));
                         }
                     }
-                } else if (j == 0 || j == PPS) {
+                } else if (j == 0 || (j+1)*SPACING > SIZE.y) {
                     float ls = (j == 0 ? -1 : 1);
                     for (int l = 0; l < LAYERS; l++) {
-                        for (int h = 1; h <= HEIGHT; h++) {
+                        for (int h = 1; h * SPACING <= HEIGHT; h++) {
                             particles.push_back(Particle(glm::vec3(x, h * SPACING, z + ls * SPACING * l), MASS, false));
                         }
                     }
@@ -217,19 +240,25 @@ int main() {
 
     sph = SPH(FLUID_PARTICLE_SPACING);
 
-    DBG("kernel_h = " << sph.kernel_h);
+    // DBG("kernel_h = " << sph.kernel_h);
 
     SSUBDIV_CELL_SIZE = 2 * sph.kernel_h;
-    DBG(SSUBDIV_CELL_SIZE);
+    // DBG(SSUBDIV_CELL_SIZE);
     SSUBDIV_GRID_SIZE = glm::uvec3(SIMULATION_DOMAIN_DIM / SSUBDIV_CELL_SIZE);
-    DBG(glm::to_string(SSUBDIV_GRID_SIZE));
+    // DBG(glm::to_string(SSUBDIV_GRID_SIZE));
     SSUBDIV_TOTAL_CELLS = SSUBDIV_GRID_SIZE.x * SSUBDIV_GRID_SIZE.y * SSUBDIV_GRID_SIZE.z;
-    DBG(SSUBDIV_TOTAL_CELLS);
+    // DBG(SSUBDIV_TOTAL_CELLS);
 
-    DBG(glm::to_string(SIMULATION_DOMAIN_ORIGIN));
+    // DBG(glm::to_string(SIMULATION_DOMAIN_ORIGIN));
 
     ssubdiv_C = std::vector<unsigned int>(SSUBDIV_TOTAL_CELLS + 1);
     ssubdiv_L = std::vector<unsigned int>(particles.size());
+
+    std::cout << "~~~~~~~~~~~~~  Ryuutai (流体)  ~~~~~~~~~~~~~\n"
+              << "Total number of particles: " << particles.size() << "\n"
+              << "Particle spacing h: " << sph.kernel_h << "\n"
+              << "Fluid rest density: " << FLUID_REST_DENSITY << "\n"
+              << std::endl;
 
     //GL SETUP
     window = init_glfw("流体");
@@ -275,6 +304,7 @@ int main() {
     ShaderProgram prog_render_point = ShaderProgram("shaders/vertex.vert", "shaders/point.frag");
     shaders.push_back(&prog_render_point);
     prog_render_point.point_attribute("position", 3, GL_FLOAT, GL_FALSE, sizeof(Particle), (void *)offsetof(Particle, pos));
+    prog_render_point.point_attribute("color", 3, GL_FLOAT, GL_FALSE, sizeof(Particle), (void *)offsetof(Particle, color));
     prog_render_point.point_attribute("advect", 1, GL_BYTE, GL_FALSE, sizeof(Particle), (void *)offsetof(Particle, advect));
 
     ShaderProgram prog_render_line = ShaderProgram("shaders/vertex.vert", "shaders/line.frag");
@@ -332,7 +362,6 @@ int main() {
     prog_raytrace.set_uniform("simulation_domain_origin", SIMULATION_DOMAIN_ORIGIN);
     prog_raytrace.set_uniform("kernel_h", sph.kernel_h);
     prog_raytrace.set_uniform("kernel_alpha", sph.kernel_alpha);
-    
 
     { /* Generate projection matrix and pass to all shaders*/
         float aspect = float(viewport_size.x) / float(viewport_size.y);
@@ -344,7 +373,7 @@ int main() {
         }
 
         //Pass fov & aspect to raytrace shader
-        prog_raytrace.set_uniform("field_of_view_tan", glm::tan(glm::radians(0.5*fovy)));
+        prog_raytrace.set_uniform("field_of_view_tan", glm::tan(glm::radians(0.5 * fovy)));
         prog_raytrace.set_uniform("screen_ratio", aspect);
     }
 
@@ -354,6 +383,8 @@ int main() {
 
     double start_time = glfwGetTime();
     double last_frame_time = start_time;
+
+    // thread_simulation = std::thread(simulation_loop);
 
     while (!glfwWindowShouldClose(window)) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -380,10 +411,7 @@ int main() {
         prog_raytrace.set_uniform("camera_direction", camera.get_direction());
 
         /* ----- PHYSICS ----- */
-        // if (!simulation_pause || simulation_step) {
         physics_step(deltatime);
-        // }
-        simulation_step = false;
 
         /* ----- RENDER ----- */
 
@@ -392,7 +420,9 @@ int main() {
             glBindBuffer(GL_ARRAY_BUFFER, vbo_particles);
             {
                 //Update particle data
+                mutex_sim_data.lock();
                 glBufferData(GL_ARRAY_BUFFER, vectorsizeof(particles), particles.data(), GL_DYNAMIC_DRAW);
+                mutex_sim_data.unlock();
 
                 // //FACES
                 if (draw_faces) {
@@ -420,6 +450,7 @@ int main() {
             {
                 prog_raytrace.use();
 
+                mutex_sim_data.lock();
                 glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_rt_particles);
                 glBufferData(GL_SHADER_STORAGE_BUFFER, vectorsizeof(particles), particles.data(), GL_DYNAMIC_DRAW);
                 glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_rt_ssubdiv_C);
@@ -427,6 +458,7 @@ int main() {
                 glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_rt_ssubdiv_L);
                 glBufferData(GL_SHADER_STORAGE_BUFFER, vectorsizeof(ssubdiv_L), ssubdiv_L.data(), GL_DYNAMIC_DRAW);
                 glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+                mutex_sim_data.unlock();
 
                 glDrawArrays(GL_TRIANGLES, 0, 6);
             }
@@ -508,14 +540,14 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
         simulation_step = true;
     } else if (key == GLFW_KEY_F1 && action == GLFW_PRESS) {
         draw_debug_lines = !draw_debug_lines;
-    } else if (key == GLFW_KEY_LEFT && action == GLFW_PRESS) {
-        particles[0].pos += glm::vec3(0.1, 0, 0);
-    } else if (key == GLFW_KEY_RIGHT && action == GLFW_PRESS) {
-        particles[0].pos += glm::vec3(-0.1, 0, 0);
-    } else if (key == GLFW_KEY_DOWN && action == GLFW_PRESS) {
-        particles[0].pos += glm::vec3(0, -0.1, 0);
-    } else if (key == GLFW_KEY_UP && action == GLFW_PRESS) {
-        particles[0].pos += glm::vec3(0, 0.1, 0);
+        // } else if (key == GLFW_KEY_LEFT && action == GLFW_PRESS) {
+        //     particles[0].pos += glm::vec3(0.1, 0, 0);
+        // } else if (key == GLFW_KEY_RIGHT && action == GLFW_PRESS) {
+        //     particles[0].pos += glm::vec3(-0.1, 0, 0);
+        // } else if (key == GLFW_KEY_DOWN && action == GLFW_PRESS) {
+        //     particles[0].pos += glm::vec3(0, -0.1, 0);
+        // } else if (key == GLFW_KEY_UP && action == GLFW_PRESS) {
+        //     particles[0].pos += glm::vec3(0, 0.1, 0);
     } else if (key == GLFW_KEY_F2 && action == GLFW_PRESS) {
         render_raytraced = !render_raytraced;
     }

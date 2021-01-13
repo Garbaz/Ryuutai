@@ -3,9 +3,9 @@
 uniform float screen_ratio;
 uniform float field_of_view_tan;
 
-const float VIEW_DEPTH = 10;
+const float VIEW_DEPTH = 5;
 const float DENSITY_SCALE = 100.0;
-const vec3 WATER_COLOR = vec3(0,0.3,1.0);
+const vec3 WATER_COLOR = vec3(0, 0.5, 1.0);
 
 uniform float step_size;
 uniform uvec3 ssubdiv_grid_size;
@@ -25,7 +25,7 @@ struct Particle {
     vec3 vel;
     vec3 acc;
     float mass;
-    uint advect;  // Used as boolean
+    bool advect;
     // Simulation data
     float density;
     float pressure;
@@ -74,7 +74,7 @@ float density(vec3 pos) {
                 uint index = sf_curve(ivec3(cell.x - dx, cell.y - dy, cell.z - dz));
                 uint c = ssubdiv_C[index];
                 uint end = ssubdiv_C[index + 1];
-                while(c < end) {
+                while (c < end) {
                     uint pi = ssubdiv_L[c];
                     s += particles[pi].mass * kernel(pos, particles[pi].pos);
                     c++;
@@ -103,7 +103,21 @@ void main() {
     //     t+=step_size;
     // }
 
-    dens = 1000.0*density(camera_position + 5.0 * ray_direction);
+    // dens = 1000.0*density(camera_position + 5.0 * ray_direction);
 
-    out_color = vec4(dens * WATER_COLOR, 1.0);
+    // out_color = vec4(dens * WATER_COLOR, 1.0);
+
+    out_color = vec4(0.0, 0.0, 0.0, 1.0);
+    for (uint i = 0; i < ssubdiv_C.length(); i++) {
+        vec3 col = abs(sin(vec3(i)+vec3(1.0,2.0,4.0)));
+        uint c = ssubdiv_C[i];
+        uint end = ssubdiv_C[i+1];
+        while(c < end) {
+            uint pi = ssubdiv_L[c];
+        if (length(particles[pi].pos.xz - 10.0 * pixel_position) < 0.05) {
+            out_color = vec4(col, 1.0);
+        }
+        c++;
+        }
+    }
 }

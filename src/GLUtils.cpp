@@ -1,3 +1,5 @@
+#include "GLUtils.hpp"
+
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm/ext.hpp>
@@ -7,9 +9,9 @@
 #include <sstream>
 #include <string>
 
-#include "GLUtils.hpp"
+#define PRINT_DEBUG false
 
-GLFWwindow *init_glfw(const std::string& window_name) {
+GLFWwindow *init_glfw(const std::string &window_name) {
     if (!glfwInit()) {
         std::cerr << "Failed to initialize GLFW" << std::endl;
         exit(-1);
@@ -114,11 +116,9 @@ GLuint compiler_render_program(std::string vertex_shader_filename, std::string f
     return program;
 }
 
-
-
-glm::vec3 random_saturated_color() {
-    float m = glm::linearRand(0, 1);
-    switch (rand() % 6) {
+glm::vec3 random_saturated_color(float m, int i) {
+    m = glm::mod(m, 1.0f);
+    switch (i % 6) {
         case 0:
             return glm::vec3(1, 0, m);
         case 1:
@@ -132,4 +132,8 @@ glm::vec3 random_saturated_color() {
         case 5:
             return glm::vec3(m, 0, 1);
     }
+}
+
+glm::vec3 random_saturated_color() {
+    random_saturated_color(glm::linearRand(0, 1), rand());
 }

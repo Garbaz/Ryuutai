@@ -19,10 +19,12 @@ void ShaderProgram::use() {
 
 GLuint ShaderProgram::point_attribute(const std::string& attribute_name, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const GLvoid* data) {
     glBindVertexArray(vao);
+    glUseProgram(gl_program_id);
     GLint loc = glGetAttribLocation(gl_program_id, attribute_name.c_str());
     glEnableVertexAttribArray(loc);
     glVertexAttribPointer(loc, size, type, normalized, stride, data);
     glBindVertexArray(0);
+    glUseProgram(0);
 }
 
 GLint ShaderProgram::get_uniform_location(const std::string& uniform_name) {
@@ -37,43 +39,48 @@ GLint ShaderProgram::get_uniform_location(const std::string& uniform_name) {
     return loc;
 }
 
-void ShaderProgram::set_uniform(const std::string& uniform_name, float f) {
+void ShaderProgram::set_uniformf(const std::string& uniform_name, float f) {
     glUseProgram(gl_program_id);
     glUniform1f(get_uniform_location(uniform_name), f);
     glUseProgram(0);
 }
-void ShaderProgram::set_uniform(const std::string& uniform_name, glm::vec2 v) {
+void ShaderProgram::set_uniformf(const std::string& uniform_name, glm::vec2 v) {
     glUseProgram(gl_program_id);
     glUniform2fv(get_uniform_location(uniform_name), 1, glm::value_ptr(v));
     glUseProgram(0);
 }
-void ShaderProgram::set_uniform(const std::string& uniform_name, glm::vec3 v) {
+void ShaderProgram::set_uniformf(const std::string& uniform_name, glm::vec3 v) {
     glUseProgram(gl_program_id);
     glUniform3fv(get_uniform_location(uniform_name), 1, glm::value_ptr(v));
     glUseProgram(0);
 }
-void ShaderProgram::set_uniform(const std::string& uniform_name, glm::vec4 v) {
+void ShaderProgram::set_uniformf(const std::string& uniform_name, glm::vec4 v) {
     glUseProgram(gl_program_id);
     glUniform4fv(get_uniform_location(uniform_name), 1, glm::value_ptr(v));
     glUseProgram(0);
 }
-void ShaderProgram::set_uniform(const std::string& uniform_name, glm::mat2 m) {
+void ShaderProgram::set_uniformf(const std::string& uniform_name, glm::mat2 m) {
     glUseProgram(gl_program_id);
     glUniformMatrix2fv(get_uniform_location(uniform_name), 1, GL_FALSE, glm::value_ptr(m));
     glUseProgram(0);
 }
-void ShaderProgram::set_uniform(const std::string& uniform_name, glm::mat3 m) {
+void ShaderProgram::set_uniformf(const std::string& uniform_name, glm::mat3 m) {
     glUseProgram(gl_program_id);
     glUniformMatrix3fv(get_uniform_location(uniform_name), 1, GL_FALSE, glm::value_ptr(m));
     glUseProgram(0);
 }
-void ShaderProgram::set_uniform(const std::string& uniform_name, glm::mat4 m) {
+void ShaderProgram::set_uniformf(const std::string& uniform_name, glm::mat4 m) {
     glUseProgram(gl_program_id);
     glUniformMatrix4fv(get_uniform_location(uniform_name), 1, GL_FALSE, glm::value_ptr(m));
     glUseProgram(0);
 }
-
-void ShaderProgram::set_uniform(const std::string& uniform_name, glm::uvec3 v) {
+void ShaderProgram::set_uniformu(const std::string& uniform_name, glm::uvec3 v) {
     glUseProgram(gl_program_id);
     glUniform3uiv(get_uniform_location(uniform_name), 1, glm::value_ptr(v));
+    glUseProgram(0);
+}
+void ShaderProgram::set_uniformi(const std::string& uniform_name, int n) {
+    glUseProgram(gl_program_id);
+    glUniform1i(get_uniform_location(uniform_name), n);
+    glUseProgram(0);
 }

@@ -21,7 +21,7 @@ class SPH {
     glm::vec3 laplace(const Particle &pi, Neighbourhood<Particle> neighbours, const std::function<glm::vec3(const Particle &)> a);
     float divergence(const Particle &pi, Neighbourhood<Particle> neighbours, const std::function<glm::vec3(const Particle &)> a);
 
-   private:
+//    private:
     float kernel(const glm::vec3 &xi, const glm::vec3 &xj);
     glm::vec3 kernel_deriv_rev(const glm::vec3 &xi, const glm::vec3 &xj);
 };

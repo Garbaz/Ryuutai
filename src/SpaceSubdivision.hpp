@@ -21,11 +21,11 @@ class Neighbourhood {
         this->sf_curve = sf_curve;
     }
 
-    void for_all(std::function<void(const T&)> f) {
+    void for_all(std::function<void(T &)> f) {
         for (int dx = -1; dx <= 1; dx++) {
             for (int dy = -1; dy <= 1; dy++) {
                 for (int dz = -1; dz <= 1; dz++) {
-                    unsigned int index = sf_curve(glm::uvec3(cell.x-dx,cell.y-dy,cell.z-dz));
+                    unsigned int index = sf_curve(glm::uvec3(cell.x - dx, cell.y - dy, cell.z - dz));
                     //DBG(index);
                     unsigned int c = (*C)[index], end = (*C)[index + 1];
                     for (; c < end; c++) {

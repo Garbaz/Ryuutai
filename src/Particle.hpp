@@ -10,17 +10,21 @@ struct Particle {
     glm::vec3 vel = glm::vec3(0);
     glm::vec3 acc = glm::vec3(0);
     GLfloat mass;
-    GLboolean advect;
+    GLint advect;/*bool*/
     // Simulation data
     GLfloat density;
     GLfloat pressure;
     // Render data
     glm::vec3 color = glm::vec3(0.2, 0.2, 0.5);
+    GLint boundary = true;/*bool*/
 
     Particle(glm::vec3 pos_, float mass_, float advect_) {
         pos = pos_;
         mass = mass_;
         advect = advect_;
+    }
+    Particle(glm::vec3 pos_, float mass_, float advect_, glm::vec3 color_) : Particle(pos_, mass_, advect_) {
+        color = color_;
     }
 };
 

@@ -11,7 +11,7 @@
 #include <limits>
 #include <chrono>
 #include <thread>
-#include <mutex>
+// #include <mutex>
 
 #include "GLUtils.hpp"
 #include "ShaderProgram.hpp"
@@ -30,6 +30,9 @@ const float FLUID_STIFFNESS = 5000.0;
 
 SPH sph;
 
+const float CFL_LAMBDA = 0.7;
+const float MAX_TIMESTEP = 0.01;
+
 const glm::vec3 SIMULATION_DOMAIN_DIM = glm::vec3(8, 5, 4);
 const glm::vec3 SIMULATION_DOMAIN_ORIGIN = glm::vec3(-0.5 * SIMULATION_DOMAIN_DIM.x, 0, -0.5 * SIMULATION_DOMAIN_DIM.z);
 float SSUBDIV_CELL_SIZE;
@@ -41,7 +44,7 @@ int align_part_data_counter = 0;
 
 const glm::vec3 GRAVITY = glm::vec3(0, -9.81, 0);
 
-const float PHYSICS_TIME_SCALE = 0.1;
+// const float PHYSICS_TIME_SCALE = 0.1;
 
 GLFWwindow *window;
 glm::ivec2 viewport_size;
@@ -79,7 +82,7 @@ void add_debug_line_(glm::vec3 b, glm::vec3 d, glm::vec3 col, float len) {
 int neighbour_coloring_cutoff = 4;
 
 std::vector<Particle> particles;
-std::mutex mutex_sim_data;
+// std::mutex mutex_sim_data;
 
 std::vector<unsigned int> ssubdiv_C;
 std::vector<unsigned int> ssubdiv_L;
@@ -90,15 +93,15 @@ unsigned int sf_curve(glm::ivec3 klm) {
            modulus(klm.z, SSUBDIV_GRID_SIZE.z) * SSUBDIV_GRID_SIZE.x * SSUBDIV_GRID_SIZE.y;
 }
 glm::ivec3 sf_cell(glm::vec3 p) {
-    return glm::ivec3((p - SIMULATION_DOMAIN_ORIGIN) / (2 * sph.kernel_h));
+    return glm::ivec3((p - SIMULATION_DOMAIN_ORIGIN) / (2 * FLUID_PARTICLE_SPACING_H));
 }
 unsigned int sf_index(glm::vec3 p) {
     glm::ivec3 klm = sf_cell(p);
     return sf_curve(klm);
 }
 
-void physics_step(float dt) {
-    dt *= PHYSICS_TIME_SCALE;
+float physics_step(/*float dt*/) {
+    // dt *= PHYSICS_TIME_SCALE;
 
 #undef TIMEIT_TIMEIT  // To keep the compiler from bitching about redefinition
 #define TIMEIT_TIMEIT false
@@ -141,7 +144,7 @@ void physics_step(float dt) {
     for (Particle &p : particles) {
         p.density = sph.density(p.pos, Neighbourhood<Particle>(sf_cell(p.pos), &particles, &ssubdiv_C, &ssubdiv_L, sf_curve), particle::mass);
         // DBG(p.density);
-        p.pressure = glm::max(FLUID_STIFFNESS * (p.density / FLUID_REST_DENSITY - 1), 0.0f);
+        p.pressure = glm::max(FLUID_STIFFNESS * (p.density / FLUID_REST_DENSITY - 1.0f), 0.0f);
         // DBG(p.pressure);
     }
     TIMEIT_SAMPLE_STOP("simulation - density & pressure")
@@ -160,6 +163,16 @@ void physics_step(float dt) {
     TIMEIT_SAMPLE_STOP("simulation - accelerations")
 
     TIMEIT_SAMPLE_START
+
+    float max_vel_sq = 0;
+    for (Particle &p : particles) {
+        float vel_mag_sq = glm::length2(p.vel);
+        if (vel_mag_sq > max_vel_sq) {
+            max_vel_sq = vel_mag_sq;
+        }
+    }
+    float dt = CFL_LAMBDA * FLUID_PARTICLE_SPACING_H / glm::max(glm::sqrt(max_vel_sq), CFL_LAMBDA * FLUID_PARTICLE_SPACING_H / MAX_TIMESTEP);
+
     if (!simulation_pause || simulation_step) {
         for (Particle &p : particles) {
             if (p.advect) {
@@ -209,19 +222,26 @@ void physics_step(float dt) {
     }*/
 
     TIMEIT_END
+
+    return glm::sqrt(max_vel_sq);
 }
 
-// void simulation_loop() {
-//     auto lasttime = std::chrono::high_resolution_clock::now();
-//     while (true) {
-//         auto currtime = std::chrono::high_resolution_clock::now();
-//         double dt = std::chrono::duration_cast<std::chrono::duration<double>>(currtime - lasttime).count();
-//         lasttime = currtime;
-//         mutex_sim_data.lock();
-//         physics_step(dt);
-//         mutex_sim_data.unlock();
-//     }
-// }
+void simulation_loop() {
+    // auto lasttime = std::chrono::high_resolution_clock::now();
+    // float time_step = 0.01 * CFL_LAMBDA * FLUID_PARTICLE_SPACING_H;
+    while (true) {
+        // auto currtime = std::chrono::high_resolution_clock::now();
+        // double dt = std::chrono::duration_cast<std::chrono::duration<double>>(currtime - lasttime).count();
+        // lasttime = currtime;
+        // mutex_sim_data.lock();
+        // float max_vel = physics_step();
+        physics_step();
+        // if (max_vel != 0.0f) {
+
+        // }
+        // mutex_sim_data.unlock();
+    }
+}
 
 std::vector<glm::uvec2> edges;
 
@@ -233,45 +253,45 @@ bool render_boundary = false;
 
 std::vector<ShaderProgram *> shaders;
 
-// std::thread thread_simulation;
+std::thread thread_simulation;
 
 int main() {
     //PARTICLE SETUP
 
     // The simulation domain boundary
-    // {
-    //     const float PARTICLE_SPACING = 0.75 * FLUID_PARTICLE_SPACING_H;
-    //     const int LAYERS = 2;
-    //     const float DENSITY = 1.0;
-    //     const float MASS = DENSITY * (PARTICLE_SPACING * PARTICLE_SPACING * PARTICLE_SPACING);
-    //     const glm::vec3 COLOR = glm::vec3(0.5, 0.5, 0.5);
-    //     for (int l = 0; l < LAYERS; l++) {
-    //         glm::vec3 size = SIMULATION_DOMAIN_DIM + glm::vec3(l * PARTICLE_SPACING);
-    //         for (float x = 0; x <= size.x; x += PARTICLE_SPACING) {
-    //             for (float y = 0; y <= size.y; y += PARTICLE_SPACING) {
-    //                 particles.push_back(Particle(SIMULATION_DOMAIN_ORIGIN + glm::vec3(x, y, -l * PARTICLE_SPACING), MASS, false));
-    //                 particles.push_back(Particle(SIMULATION_DOMAIN_ORIGIN + glm::vec3(x, y, size.z), MASS, false));
-    //             }
-    //         }
-    //         for (float x = 0; x <= size.x; x += PARTICLE_SPACING) {
-    //             for (float z = 0; z <= size.z; z += PARTICLE_SPACING) {
-    //                 float y = size.y;
-    //                 particles.push_back(Particle(SIMULATION_DOMAIN_ORIGIN + glm::vec3(x, -l * PARTICLE_SPACING, z), MASS, false));
-    //                 particles.push_back(Particle(SIMULATION_DOMAIN_ORIGIN + glm::vec3(x, size.y, z), MASS, false));
-    //             }
-    //         }
-    //         for (float z = 0; z <= size.z; z += PARTICLE_SPACING) {
-    //             for (float y = 0; y <= size.y; y += PARTICLE_SPACING) {
-    //                 float x = size.x;
-    //                 particles.push_back(Particle(SIMULATION_DOMAIN_ORIGIN + glm::vec3(-l * PARTICLE_SPACING, y, z), MASS, false));
-    //                 particles.push_back(Particle(SIMULATION_DOMAIN_ORIGIN + glm::vec3(size.x, y, z), MASS, false));
-    //             }
-    //         }
-    //     }
-    // }
+    {
+        const float PARTICLE_SPACING = 0.75 * FLUID_PARTICLE_SPACING_H;
+        const int LAYERS = 2;
+        const float DENSITY = 2.0;
+        const float MASS = DENSITY * (PARTICLE_SPACING * PARTICLE_SPACING * PARTICLE_SPACING);
+        const glm::vec3 COLOR = glm::vec3(0.5, 0.5, 0.5);
+        for (int l = 0; l < LAYERS; l++) {
+            glm::vec3 size = SIMULATION_DOMAIN_DIM + glm::vec3(l * PARTICLE_SPACING);
+            for (float x = 0; x <= size.x; x += PARTICLE_SPACING) {
+                for (float y = 0; y <= size.y; y += PARTICLE_SPACING) {
+                    particles.push_back(Particle(SIMULATION_DOMAIN_ORIGIN + glm::vec3(x, y, -l * PARTICLE_SPACING), MASS, false));
+                    particles.push_back(Particle(SIMULATION_DOMAIN_ORIGIN + glm::vec3(x, y, size.z), MASS, false));
+                }
+            }
+            for (float x = 0; x <= size.x; x += PARTICLE_SPACING) {
+                for (float z = 0; z <= size.z; z += PARTICLE_SPACING) {
+                    float y = size.y;
+                    particles.push_back(Particle(SIMULATION_DOMAIN_ORIGIN + glm::vec3(x, -l * PARTICLE_SPACING, z), MASS, false));
+                    particles.push_back(Particle(SIMULATION_DOMAIN_ORIGIN + glm::vec3(x, size.y, z), MASS, false));
+                }
+            }
+            for (float z = 0; z <= size.z; z += PARTICLE_SPACING) {
+                for (float y = 0; y <= size.y; y += PARTICLE_SPACING) {
+                    float x = size.x;
+                    particles.push_back(Particle(SIMULATION_DOMAIN_ORIGIN + glm::vec3(-l * PARTICLE_SPACING, y, z), MASS, false));
+                    particles.push_back(Particle(SIMULATION_DOMAIN_ORIGIN + glm::vec3(size.x, y, z), MASS, false));
+                }
+            }
+        }
+    }
 
     // The fluid body
-    for (float x = 0; x <= 4; x += FLUID_PARTICLE_SPACING_H) {
+    for (float x = 0; x <= 3.5; x += FLUID_PARTICLE_SPACING_H) {
         for (float y = 1; y <= 4; y += FLUID_PARTICLE_SPACING_H) {
             for (float z = -1; z <= 1; z += FLUID_PARTICLE_SPACING_H) {
                 particles.push_back(Particle(glm::vec3(x, y, z), FLUID_PARTICLE_MASS, true));
@@ -314,9 +334,9 @@ int main() {
 
     sph = SPH(1.0 * FLUID_PARTICLE_SPACING_H);
 
-    // DBG("kernel_h = " << sph.kernel_h);
+    // DBG("kernel_h = " << FLUID_PARTICLE_SPACING_H);
 
-    SSUBDIV_CELL_SIZE = 2 * sph.kernel_h;
+    SSUBDIV_CELL_SIZE = 2 * FLUID_PARTICLE_SPACING_H;
     // DBG(SSUBDIV_CELL_SIZE);
     SSUBDIV_GRID_SIZE = glm::uvec3(SIMULATION_DOMAIN_DIM / SSUBDIV_CELL_SIZE);
     // DBG(glm::to_string(SSUBDIV_GRID_SIZE));
@@ -436,10 +456,10 @@ int main() {
     }
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-    prog_raytrace.set_uniformf("step_size", 0.5f * sph.kernel_h);
+    prog_raytrace.set_uniformf("step_size", 0.5f * FLUID_PARTICLE_SPACING_H);
     prog_raytrace.set_uniformu("ssubdiv_grid_size", SSUBDIV_GRID_SIZE);
     prog_raytrace.set_uniformf("simulation_domain_origin", SIMULATION_DOMAIN_ORIGIN);
-    prog_raytrace.set_uniformf("kernel_h", sph.kernel_h);
+    prog_raytrace.set_uniformf("kernel_h", FLUID_PARTICLE_SPACING_H);
     prog_raytrace.set_uniformf("kernel_alpha", sph.kernel_alpha);
 
     { /* Generate projection matrix and pass to all shaders*/
@@ -463,7 +483,7 @@ int main() {
     double start_time = glfwGetTime();
     double last_frame_time = start_time;
 
-    // thread_simulation = std::thread(simulation_loop);
+    thread_simulation = std::thread(simulation_loop);
 
     while (!glfwWindowShouldClose(window)) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -490,7 +510,7 @@ int main() {
         prog_raytrace.set_uniformf("camera_direction", camera.get_direction());
 
         /* ----- PHYSICS ----- */
-        physics_step(deltatime);
+        // physics_step(deltatime);
 
         /* ----- RENDER ----- */
 
@@ -499,9 +519,9 @@ int main() {
             glBindBuffer(GL_ARRAY_BUFFER, vbo_particles);
             {
                 //Update particle data
-                mutex_sim_data.lock();
+                // mutex_sim_data.lock();
                 glBufferData(GL_ARRAY_BUFFER, vectorsizeof(particles), particles.data(), GL_DYNAMIC_DRAW);
-                mutex_sim_data.unlock();
+                // mutex_sim_data.unlock();
 
                 // // //FACES
                 // if (draw_faces) {
@@ -529,7 +549,7 @@ int main() {
             {
                 prog_raytrace.use();
 
-                mutex_sim_data.lock();
+                // mutex_sim_data.lock();
                 glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_rt_particles);
                 glBufferData(GL_SHADER_STORAGE_BUFFER, vectorsizeof(particles), particles.data(), GL_DYNAMIC_DRAW);
                 glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_rt_ssubdiv_C);
@@ -537,7 +557,7 @@ int main() {
                 glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_rt_ssubdiv_L);
                 glBufferData(GL_SHADER_STORAGE_BUFFER, vectorsizeof(ssubdiv_L), ssubdiv_L.data(), GL_DYNAMIC_DRAW);
                 glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-                mutex_sim_data.unlock();
+                // mutex_sim_data.unlock();
 
                 glDrawArrays(GL_TRIANGLES, 0, 6);
             }

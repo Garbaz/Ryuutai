@@ -7,4 +7,4 @@ Particle-based fluid simualtion with SPH, space partitioning, multi-threading, a
 * Separate rendering and simulation threads
 * Implement ray tracer
 * Add soft body and rigid body support
-* Invesitage and improve cash usage
+* Invesitage and improve cache usage
